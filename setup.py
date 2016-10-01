@@ -19,28 +19,27 @@ test_requirements = [
 ]
 
 setup(
-    name='wshygiene',
+    name='workspace-hygiene',
     version='0.1.0',
     description="Scan your workspace for file changes and dirty version control repositories.",
     long_description=readme + '\n\n' + history,
     author="Dorian Taylor",
     author_email='dorian.taylor.lists@gmail.com',
-    url='https://github.com/doriantaylor/wshygiene',
+    url='https://github.com/doriantaylor/workspace-hygiene',
     packages=[
-        'wshygiene',
+        'workspace-hygiene',
     ],
-    package_dir={'wshygiene':
-                 'wshygiene'},
+    package_dir={'workspace-hygiene': 'wshygiene'},
     entry_points={
         'console_scripts': [
-            'wshygiene=wshygiene.cli:main'
+            'workspace-hygiene=workspace-hygiene.cli:main'
         ]
     },
     include_package_data=True,
     install_requires=requirements,
     license="Apache Software License 2.0",
     zip_safe=False,
-    keywords='wshygiene',
+    keywords='workspace-hygiene',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',

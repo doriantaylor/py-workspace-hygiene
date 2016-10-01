@@ -4,4 +4,4 @@ Usage
 
 To use Workspace Hygiene in a project::
 
-    import wshygiene
+    import workspace-hygiene
