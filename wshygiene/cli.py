@@ -1,14 +1,24 @@
 # -*- coding: utf-8 -*-
 
-import click
+from wshygiene import StorageProxy, Scanner
+import click, os
 
 @click.command()
-def main(args=None):
-    """Console script for wshygiene"""
-    click.echo("Replace this message by putting your code into "
-                "wshygiene.cli.main")
-    click.echo("See click documentation at http://click.pocoo.org/")
+@click.option('-s', '--state', default=os.path.expanduser('~/.wshygiene'),
+              type=click.Path(exists=False, file_okay=False, dir_okay=True,
+                              resolve_path=True))
+@click.argument('root', nargs=-1, type=click.Path(
+    file_okay=False, dir_okay=True, resolve_path=True))
+def main(state, root):
+    """workspace-hygiene"""
+    click.echo(state)
+    click.echo(root)
 
+    # set up storage
+    storage = StorageProxy(state)
+    # set up scanner
+    scanner = Scanner(storage)
+    scanner.scan(root, ignore=state)
 
 if __name__ == "__main__":
     main()

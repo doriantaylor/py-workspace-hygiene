@@ -11,11 +11,18 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'Click>=6.0',
-    # TODO: put package requirements here
+    'rdflib>=4.2.1',
+    'pyxdg>=0.25',
+    'GitPython>=2.0.8',
+    'mercurial>=3.7.3',
 ]
 
 test_requirements = [
     # TODO: put package test requirements here
+]
+
+dependency_links = [
+    'git+https://anongit.freedesktop.org/git/xdg/pyxdg.git#egg=pyxdg-0.25'
 ]
 
 setup(
@@ -32,11 +39,12 @@ setup(
     package_dir={'workspace-hygiene': 'wshygiene'},
     entry_points={
         'console_scripts': [
-            'workspace-hygiene=workspace-hygiene.cli:main'
+            'workspace-hygiene=wshygiene.cli:main'
         ]
     },
     include_package_data=True,
     install_requires=requirements,
+    dependency_links=dependency_links,
     license="Apache Software License 2.0",
     zip_safe=False,
     keywords='workspace-hygiene',
