@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
 
+# wah wah wah
+# SyntaxError: from __future__ imports must occur at the beginning of the file
+from __future__ import print_function
+#import sys
+# deal with print function
+#if sys.version_info[0] < 3:
+
+
 from rdflib import ConjunctiveGraph, URIRef, BNode, Literal, RDF, RDFS, OWL, XSD
 from rdflib.namespace import Namespace, NamespaceManager
 from rdflib.store import Store
 
 import os, urllib, chardet, dateutil.parser
 
-class StorageProxy:
+class StorageProxy(object):
     """Encapsulates data storage."""
 
     # we want a static NS
@@ -26,7 +34,7 @@ class StorageProxy:
     def __init__(self, obj):
         #assert isinstance(obj, Graph)
         if isinstance(obj, str):
-            print 'str!'
+            print('str!')
             if not os.path.isdir(obj): os.makedirs(obj, 0o700)
 
             self.graph = ConjunctiveGraph('Sleepycat')
@@ -44,7 +52,7 @@ class StorageProxy:
         #print [x for x in nsm.namespaces()]
 
     def add_dir(self, path, mtime=None):
-        print "DIR %s" % path
+        print("DIR %s" % path)
 
         slug = self.__slug_for(path)
 
@@ -80,7 +88,7 @@ class StorageProxy:
         return Literal(bn, datatype=XSD.string)
 
     def add_symlink(self, source, target, mtime=None):
-        print "LINK %s %s" % (source, target)
+        print("LINK %s %s" % (source, target))
 
         # get this before inputs are coerced
         slug   = self.__slug_for(source)
@@ -149,7 +157,7 @@ class StorageProxy:
 
         for stmt in stmts: self.graph.add(stmt)
 
-        print "FILE %s %d %s %s %s" % (path, size, lmt.value, mimetype, digest)
+        print("FILE %s %d %s %s %s" % (path, size, lmt.value, mimetype, digest))
 
     def __file_uri(self, path):
         if isinstance(path, URIRef): return path
@@ -225,15 +233,40 @@ class StorageProxy:
     # def sync(self):
     #     self.graph.store.sync()
 
-import os, stat, hashlib, base64
+import sys, os, stat, hashlib, base64, collections
 from datetime import datetime
 from xdg import Mime
 
+
 # multiprocessing stuff
 from multiprocessing import Process, Pipe
+from multiprocessing.pool import Pool
 from time import sleep
 
-class Scanner:
+def _printerr(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+def _ni_uri(path, blocksize=65536):
+    sha = hashlib.sha256()
+    with open(path, 'rb') as fh:
+        buf = fh.read(blocksize)
+        while len(buf) > 0:
+            sha.update(buf)
+            buf = fh.read(blocksize)
+
+        b64 = base64.urlsafe_b64encode(sha.digest()).strip('=')
+        return 'ni:///sha-256;' + b64
+
+def _content_scan_poolfunc(args):
+    path, size, mtime = args
+    try:
+        mimetype = Mime.get_type2(path)
+        digest   = _ni_uri(path)
+        return path, size, mtime, str(mimetype), digest
+    except:
+        return path, size, mtime, None, None
+
+class Scanner(object):
     """Encapsulates the scanning process."""
 
     # don't do subversion for now
@@ -242,12 +275,12 @@ class Scanner:
     # XXX maybe do these as plugins?
     def __do_git (self, path):
         from git import Repo
-        print "GIT " + path
+        print("GIT " + path)
         #pass
 
     def __do_hg (self, path):
         from mercurial import hg, ui, scmutil, commands
-        print "HG " + path
+        print("HG " + path)
         #pass
 
     # dispatch table for version control
@@ -259,8 +292,9 @@ class Scanner:
     # content-scanning block size (should we make it configurable?)
     BLOCKSIZE = 65536
 
-    def __init__(self, store):
+    def __init__(self, store, errcb=_printerr):
         self.store = store
+        self.errcb = errcb
 
     def __ni_uri(self, path):
         sha = hashlib.sha256()
@@ -284,39 +318,39 @@ class Scanner:
 
         return fullpath, st.st_size, st.st_mtime # datetime.utcfromtimestamp(st.st_mtime)
 
-    def __scan_fs_entity(self, dirname, basename=None):
-        # normalize path
-        fullpath = dirname
-        if basename is not None: fullpath = os.path.join(dirname, basename)
+    # def __scan_fs_entity(self, dirname, basename=None):
+    #     # normalize path
+    #     fullpath = dirname
+    #     if basename is not None: fullpath = os.path.join(dirname, basename)
 
-        # name parent mtime mimetype size
+    #     # name parent mtime mimetype size
 
-        if not os.path.exists(fullpath): return
+    #     if not os.path.exists(fullpath): return
 
-        st = os.stat(fullpath)
+    #     st = os.stat(fullpath)
 
-        if os.path.islink(fullpath):
-            target = os.readlink(fullpath)
-            # add symlink
-            self.store.add_symlink(fullpath, target)
-        elif os.path.isdir(fullpath):
-            # add directory
-            self.store.add_dir(fullpath)
-        else:
-            size     = st.st_size
-            mtime    = datetime.utcfromtimestamp(st.st_mtime)
-            mimetype = 'application/octet-stream'
-            digest   = None
+    #     if os.path.islink(fullpath):
+    #         target = os.readlink(fullpath)
+    #         # add symlink
+    #         self.store.add_symlink(fullpath, target)
+    #     elif os.path.isdir(fullpath):
+    #         # add directory
+    #         self.store.add_dir(fullpath)
+    #     else:
+    #         size     = st.st_size
+    #         mtime    = datetime.utcfromtimestamp(st.st_mtime)
+    #         mimetype = 'application/octet-stream'
+    #         digest   = None
 
-            # only scan/add the file if the stored mtime is 
-            #oldmt = self.store.get_mtime(fullpath)
-            #print 'old: %s new %s' % (oldmt, mtime)
-            #if oldmt is None or mtime > oldmt:
-            if os.access(fullpath, os.R_OK):
-                mimetype = Mime.get_type2(fullpath)
-                digest   = self.__ni_uri(fullpath)
+    #         # only scan/add the file if the stored mtime is 
+    #         #oldmt = self.store.get_mtime(fullpath)
+    #         #print 'old: %s new %s' % (oldmt, mtime)
+    #         #if oldmt is None or mtime > oldmt:
+    #         if os.access(fullpath, os.R_OK):
+    #             mimetype = Mime.get_type2(fullpath)
+    #             digest   = self.__ni_uri(fullpath)
             
-            self.store.add_file(fullpath, size, mtime, mimetype, digest)
+    #         self.store.add_file(fullpath, size, mtime, mimetype, digest)
 
     def __deref_symlinks(self, path, seen=set()):
         """recursively construct a chain of symlinks until we hit a real file
@@ -359,6 +393,7 @@ class Scanner:
             p = path
             while p != os.path.dirname(p):
                 if p in contains: return True
+                if os.path.basename(p) in contains: return True
                 p = os.path.dirname(p)
             else:
                 return False
@@ -403,10 +438,13 @@ class Scanner:
                     conn.send(e)
                 except Exception as e:
                     # everything else is bunk
-                    print e
+                    self.errcb(e)
                     break
             else:
                 sleep(0.1)
+
+    # def __content_scan_poolfunc(self, args):
+    #     return args
 
     def scan(self, roots=[], ignore=None):
         """Scan a list of roots.
@@ -420,6 +458,12 @@ class Scanner:
 
         slow right?
 
+        this is after multiprocessing:
+
+        real    664m51.280s
+        user    165m44.056s
+        sys     45m10.116s
+
         """
 
         # make sure this is a list as we will be modifying it
@@ -429,11 +473,30 @@ class Scanner:
         seen = set()
 
         # subprocess fun times
-        pconn, cconn = Pipe()
-        cscan = Process(target=self.__content_scan_loop, args=(cconn,))
-        cscan.start()
+        #pconn, cconn = Pipe()
+        #cscan = Process(target=self.__content_scan_loop, args=(cconn,))
+        #cscan.start()
+
+        pool = Pool(10)
+
+        def poolcb(mapresult):
+            # guard 1
+            if not isinstance(mapresult, collections.Sequence):
+                self.errcb("pool callback: got args %s" % repr(mapresult))
+                return
+
+            for content in mapresult:
+                # guard 2
+                if not isinstance(content, tuple):
+                    # log
+                    self.errcb("pool callback: loop got %s" % repr(content))
+                    continue
+
+                path, size, mtime, mimetype, digest = content
+                self.store.add_file(path, size, mtime, mimetype, digest)
 
         for root in roots:
+
             if root in self.IGNORE or os.path.basename(root) in self.IGNORE:
                 continue
 
@@ -441,6 +504,10 @@ class Scanner:
                 # insurance
                 if current in seen: continue
                 seen.add(current)
+
+                # skip this 
+                if self.__path_contains(
+                        current, self.IGNORE | set(self.VCS.keys())): continue
 
                 # now add the current dir
                 cstat = os.stat(current)
@@ -456,8 +523,8 @@ class Scanner:
 
                 # process/remove intersection of version control
                 for vc in set(self.VCS.keys()) & ds:
-                    self.VCS[vc](self, current)
                     dirs.remove(vc)
+                    self.VCS[vc](self, current)
 
                 # sort these things
                 dirs.sort()
@@ -469,7 +536,7 @@ class Scanner:
                     links  = self.__deref_symlinks(subdir)
 
                     if len(links) > 1:
-                        print 'SYMLINK DIR %s' % repr(links)
+                        print('SYMLINK DIR %s' % repr(links))
 
                         # add symlinks
                         mtimes = self.__symlink_mtimes(links)
@@ -490,13 +557,14 @@ class Scanner:
                 # scan the files
                 #for fn in files: self.__scan_fs_entity(current, fn)
                 fs = set(files)
+                mapq = []
                 for fn in files:
                     absfile = os.path.join(current, fn)
 
                     # deal with symlinks
                     links   = self.__deref_symlinks(absfile)
                     if len(links) > 1:
-                        print 'SYMLINK FILE %s' % repr(links)
+                        print('SYMLINK FILE %s' % repr(links))
                         mtimes = self.__symlink_mtimes(links)
                         self.store.add_symlink_stack(links, mtimes)
 
@@ -509,17 +577,21 @@ class Scanner:
                         msg = self.__scan_file_prelim(links[-1])
                         if msg is not None:
                             #print "SENDING MESSAGE", msg
-                            pconn.send(msg)
+                            #pconn.send(msg)
+                            mapq.append(msg)
+
+                # now run this shit
+                pool.map_async(_content_scan_poolfunc, mapq, callback=poolcb)
 
                 # retrieve stuff but only for so long
-                while pconn.poll():
-                    try:
-                        msg = pconn.recv()
-                        if msg is None: break
-                        self.store.add_file(*msg)
-                        #print msg
-                    except EOFError:
-                        break
+                # while pconn.poll():
+                #     try:
+                #         msg = pconn.recv()
+                #         if msg is None: break
+                #         self.store.add_file(*msg)
+                #         #print msg
+                #     except EOFError:
+                #         break
 
             # sync after every root?
             # actually it syncs by itself
@@ -529,27 +601,29 @@ class Scanner:
         #print len(self.store.graph)
 
         # clean up the stragglers
-        print "GOT HERE"
-        pconn.send(None)
-        while True:
-            if pconn.poll():
-                try:
-                    msg = pconn.recv()
-                    #print msg
-                    if msg is None: break
-                    self.store.add_file(*msg)
+        print("GOT HERE")
+        # pconn.send(None)
+        # while True:
+        #     if pconn.poll():
+        #         try:
+        #             msg = pconn.recv()
+        #             #print msg
+        #             if msg is None: break
+        #             self.store.add_file(*msg)
                     
-                except EOFError:
-                    break
-            else:
-                sleep(0.1)
+        #         except EOFError:
+        #             break
+        #     else:
+        #         sleep(0.1)
 
-        # and finally shut down the subprocess
-        cscan.join()
+        # # and finally shut down the subprocess
+        # cscan.join()
+        pool.close()
+        pool.join()
 
 from lxml import etree
 
-class Renderer:
+class Renderer(object):
     """Encapsulates the business of rendering data."""
     def __init__(self, store):
         pass
